@@ -1,4 +1,4 @@
-HelloPerson = "Hello {{.Name}}"
+HelloPerson = "Hello English {{.Name}}"
 
 [MyUnreadEmails]
 description = "The number of unread emails I have"

@@ -2,9 +2,9 @@ package i18n
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 
-	"github.com/nicksnyder/go-i18n/v2/internal/plural"
+	"github.com/abdullahskartal/go-i18n/v2/internal/plural"
 
 	"golang.org/x/text/language"
 )
@@ -20,9 +20,9 @@ type UnmarshalFunc func(data []byte, v interface{}) error
 type Bundle struct {
 	defaultLanguage  language.Tag
 	unmarshalFuncs   map[string]UnmarshalFunc
-	messageTemplates map[language.Tag]map[string]*MessageTemplate
+	messageTemplates map[string]map[string]*MessageTemplate
 	pluralRules      plural.Rules
-	tags             []language.Tag
+	countryTagPair   map[string][]language.Tag
 	matcher          language.Matcher
 }
 
@@ -31,13 +31,13 @@ type Bundle struct {
 var artTag = language.MustParse("art")
 
 // NewBundle returns a bundle with a default language and a default set of plural rules.
-func NewBundle(defaultLanguage language.Tag) *Bundle {
+func NewBundle(countryCode string, defaultLanguage language.Tag) *Bundle {
 	b := &Bundle{
 		defaultLanguage: defaultLanguage,
 		pluralRules:     plural.DefaultRules(),
 	}
 	b.pluralRules[artTag] = b.pluralRules.Rule(language.English)
-	b.addTag(defaultLanguage)
+	b.addTag(countryCode, defaultLanguage)
 	return b
 }
 
@@ -51,18 +51,18 @@ func (b *Bundle) RegisterUnmarshalFunc(format string, unmarshalFunc UnmarshalFun
 
 // LoadMessageFile loads the bytes from path
 // and then calls ParseMessageFileBytes.
-func (b *Bundle) LoadMessageFile(path string) (*MessageFile, error) {
-	buf, err := ioutil.ReadFile(path)
+func (b *Bundle) LoadMessageFile(path, countryCode string) (*MessageFile, error) {
+	buf, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return b.ParseMessageFileBytes(buf, path)
+	return b.ParseMessageFileBytes(buf, path, countryCode)
 }
 
 // MustLoadMessageFile is similar to LoadMessageFile
 // except it panics if an error happens.
-func (b *Bundle) MustLoadMessageFile(path string) {
-	if _, err := b.LoadMessageFile(path); err != nil {
+func (b *Bundle) MustLoadMessageFile(countryCode, path string) {
+	if _, err := b.LoadMessageFile(path, countryCode); err != nil {
 		panic(err)
 	}
 }
@@ -72,12 +72,12 @@ func (b *Bundle) MustLoadMessageFile(path string) {
 // The format of the file is everything after the last ".".
 //
 // The language tag of the file is everything after the second to last "." or after the last path separator, but before the format.
-func (b *Bundle) ParseMessageFileBytes(buf []byte, path string) (*MessageFile, error) {
+func (b *Bundle) ParseMessageFileBytes(buf []byte, path, countryCode string) (*MessageFile, error) {
 	messageFile, err := ParseMessageFileBytes(buf, path, b.unmarshalFuncs)
 	if err != nil {
 		return nil, err
 	}
-	if err := b.AddMessages(messageFile.Tag, messageFile.Messages...); err != nil {
+	if err := b.AddMessages(countryCode, messageFile.Tag, messageFile.Messages...); err != nil {
 		return nil, err
 	}
 	return messageFile, nil
@@ -85,60 +85,72 @@ func (b *Bundle) ParseMessageFileBytes(buf []byte, path string) (*MessageFile, e
 
 // MustParseMessageFileBytes is similar to ParseMessageFileBytes
 // except it panics if an error happens.
-func (b *Bundle) MustParseMessageFileBytes(buf []byte, path string) {
-	if _, err := b.ParseMessageFileBytes(buf, path); err != nil {
+func (b *Bundle) MustParseMessageFileBytes(buf []byte, path, countryCode string) {
+	if _, err := b.ParseMessageFileBytes(buf, path, countryCode); err != nil {
 		panic(err)
 	}
 }
 
 // AddMessages adds messages for a language.
 // It is useful if your messages are in a format not supported by ParseMessageFileBytes.
-func (b *Bundle) AddMessages(tag language.Tag, messages ...*Message) error {
+func (b *Bundle) AddMessages(countryCode string, tag language.Tag, messages ...*Message) error {
 	pluralRule := b.pluralRules.Rule(tag)
 	if pluralRule == nil {
 		return fmt.Errorf("no plural rule registered for %s", tag)
 	}
+	key := b.messageTemplateKey(countryCode, tag)
 	if b.messageTemplates == nil {
-		b.messageTemplates = map[language.Tag]map[string]*MessageTemplate{}
+		b.messageTemplates = map[string]map[string]*MessageTemplate{}
 	}
-	if b.messageTemplates[tag] == nil {
-		b.messageTemplates[tag] = map[string]*MessageTemplate{}
-		b.addTag(tag)
+	if b.messageTemplates[key] == nil {
+		b.messageTemplates[key] = map[string]*MessageTemplate{}
+		b.addTag(countryCode, tag)
 	}
 	for _, m := range messages {
-		b.messageTemplates[tag][m.ID] = NewMessageTemplate(m)
+		b.messageTemplates[key][m.ID] = NewMessageTemplate(m)
 	}
 	return nil
 }
 
 // MustAddMessages is similar to AddMessages except it panics if an error happens.
-func (b *Bundle) MustAddMessages(tag language.Tag, messages ...*Message) {
-	if err := b.AddMessages(tag, messages...); err != nil {
+func (b *Bundle) MustAddMessages(countryCode string, tag language.Tag, messages ...*Message) {
+	if err := b.AddMessages(countryCode, tag, messages...); err != nil {
 		panic(err)
 	}
 }
 
-func (b *Bundle) addTag(tag language.Tag) {
-	for _, t := range b.tags {
-		if t == tag {
-			// Tag already exists
-			return
+func (b *Bundle) addTag(countryCode string, tag language.Tag) {
+	for cc, tags := range b.countryTagPair {
+		for _, t := range tags {
+			if cc == countryCode && t == tag {
+				// Tag already exists
+				return
+			}
 		}
 	}
-	b.tags = append(b.tags, tag)
-	b.matcher = language.NewMatcher(b.tags)
+
+	if b.countryTagPair == nil {
+		b.countryTagPair = make(map[string][]language.Tag)
+	}
+	b.countryTagPair[countryCode] = append(b.countryTagPair[countryCode], tag)
+	b.matcher = language.NewMatcher(b.countryTagPair[countryCode])
 }
 
 // LanguageTags returns the list of language tags
 // of all the translations loaded into the bundle
-func (b *Bundle) LanguageTags() []language.Tag {
-	return b.tags
+func (b *Bundle) LanguageTags(countryCode string) []language.Tag {
+	return b.countryTagPair[countryCode]
 }
 
-func (b *Bundle) getMessageTemplate(tag language.Tag, id string) *MessageTemplate {
-	templates := b.messageTemplates[tag]
+func (b *Bundle) getMessageTemplate(tag language.Tag, id, countryCode string) *MessageTemplate {
+	key := b.messageTemplateKey(countryCode, tag)
+	templates := b.messageTemplates[key]
 	if templates == nil {
 		return nil
 	}
 	return templates[id]
+}
+
+func (b *Bundle) messageTemplateKey(countryCode string, tag language.Tag) string {
+	return countryCode + "-" + tag.String()
 }

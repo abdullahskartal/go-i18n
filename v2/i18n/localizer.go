@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/nicksnyder/go-i18n/v2/internal/plural"
+	"github.com/abdullahskartal/go-i18n/v2/internal/plural"
 	"golang.org/x/text/language"
 )
 
@@ -25,6 +25,8 @@ type Localizer struct {
 	// tags is the list of language tags that the Localizer checks
 	// in order when localizing a message.
 	tags []language.Tag
+
+	countryCode string
 }
 
 // NewLocalizer returns a new Localizer that looks up messages
@@ -35,6 +37,10 @@ func NewLocalizer(bundle *Bundle, langs ...string) *Localizer {
 		bundle: bundle,
 		tags:   parseTags(langs),
 	}
+}
+
+func (l *Localizer) SetCountryCode(countryCode string) {
+	l.countryCode = countryCode
 }
 
 func parseTags(langs []string) []language.Tag {
@@ -68,6 +74,8 @@ type LocalizeConfig struct {
 
 	// Funcs is used to extend the Go template engine's built in functions
 	Funcs template.FuncMap
+
+	CountryCode string
 }
 
 type invalidPluralCountErr struct {
@@ -155,7 +163,12 @@ func (l *Localizer) LocalizeWithTag(lc *LocalizeConfig) (string, language.Tag, e
 		}
 	}
 
-	tag, template, err := l.getMessageTemplate(messageID, lc.DefaultMessage)
+	countryCode := l.countryCode
+	if countryCode == "" {
+		countryCode = lc.CountryCode
+	}
+
+	tag, template, err := l.getMessageTemplate(messageID, lc.DefaultMessage, countryCode)
 	if template == nil {
 		return "", language.Und, err
 	}
@@ -178,10 +191,10 @@ func (l *Localizer) LocalizeWithTag(lc *LocalizeConfig) (string, language.Tag, e
 	return msg, tag, err
 }
 
-func (l *Localizer) getMessageTemplate(id string, defaultMessage *Message) (language.Tag, *MessageTemplate, error) {
+func (l *Localizer) getMessageTemplate(id string, defaultMessage *Message, countryCode string) (language.Tag, *MessageTemplate, error) {
 	_, i, _ := l.bundle.matcher.Match(l.tags...)
-	tag := l.bundle.tags[i]
-	mt := l.bundle.getMessageTemplate(tag, id)
+	tag := l.bundle.countryTagPair[countryCode][i]
+	mt := l.bundle.getMessageTemplate(tag, id, countryCode)
 	if mt != nil {
 		return tag, mt, nil
 	}
@@ -194,7 +207,7 @@ func (l *Localizer) getMessageTemplate(id string, defaultMessage *Message) (lang
 	}
 
 	// Fallback to default language in bundle.
-	mt = l.bundle.getMessageTemplate(l.bundle.defaultLanguage, id)
+	mt = l.bundle.getMessageTemplate(l.bundle.defaultLanguage, id, countryCode)
 	if mt != nil {
 		return l.bundle.defaultLanguage, mt, &MessageNotFoundErr{tag: tag, messageID: id}
 	}

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nicksnyder/go-i18n/v2/internal/plural"
+	"github.com/abdullahskartal/go-i18n/v2/internal/plural"
 	"golang.org/x/text/language"
 )
 
