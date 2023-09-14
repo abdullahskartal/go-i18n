@@ -2,6 +2,7 @@ package i18n
 
 import (
 	"fmt"
+	"strings"
 	"text/template"
 
 	"github.com/abdullahskartal/go-i18n/v2/internal/plural"
@@ -40,7 +41,7 @@ func NewLocalizer(bundle *Bundle, langs ...string) *Localizer {
 }
 
 func (l *Localizer) SetCountryCode(countryCode string) {
-	l.countryCode = countryCode
+	l.countryCode = strings.ToLower(countryCode)
 }
 
 func parseTags(langs []string) []language.Tag {
