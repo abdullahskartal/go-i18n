@@ -2,6 +2,7 @@ package i18n
 
 import (
 	"fmt"
+	"strings"
 	"text/template"
 
 	"github.com/abdullahskartal/go-i18n/v2/internal/plural"
@@ -40,7 +41,7 @@ func NewLocalizer(bundle *Bundle, langs ...string) *Localizer {
 }
 
 func (l *Localizer) SetCountryCode(countryCode string) {
-	l.countryCode = countryCode
+	l.countryCode = strings.ToLower(countryCode)
 }
 
 func parseTags(langs []string) []language.Tag {
@@ -197,7 +198,13 @@ func (l *Localizer) LocalizeWithTag(lc *LocalizeConfig) (string, language.Tag, e
 
 func (l *Localizer) getMessageTemplate(id string, defaultMessage *Message, countryCode string) (language.Tag, *MessageTemplate, error) {
 	_, i, _ := l.bundle.matcher.Match(l.tags...)
-	languageTags := l.bundle.countryTagPair[countryCode]
+	languageTags, ok := l.bundle.countryTagPair[countryCode]
+	if !ok {
+		return language.Und, nil, &MessageNotFoundErr{messageID: id}
+	}
+	if i >= len(languageTags) {
+		return language.Und, nil, &MessageNotFoundErr{messageID: id}
+	}
 	tag := languageTags[i]
 	mt := l.bundle.getMessageTemplate(tag, id, countryCode)
 	if mt != nil {
