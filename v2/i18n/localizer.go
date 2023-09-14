@@ -163,9 +163,13 @@ func (l *Localizer) LocalizeWithTag(lc *LocalizeConfig) (string, language.Tag, e
 		}
 	}
 
-	countryCode := l.countryCode
-	if countryCode == "" {
+	var countryCode string
+	if l.countryCode != "" {
+		countryCode = l.countryCode
+	} else if lc.CountryCode != "" {
 		countryCode = lc.CountryCode
+	} else {
+		return "", language.Und, fmt.Errorf("country code must be exist")
 	}
 
 	tag, template, err := l.getMessageTemplate(messageID, lc.DefaultMessage, countryCode)
@@ -193,7 +197,8 @@ func (l *Localizer) LocalizeWithTag(lc *LocalizeConfig) (string, language.Tag, e
 
 func (l *Localizer) getMessageTemplate(id string, defaultMessage *Message, countryCode string) (language.Tag, *MessageTemplate, error) {
 	_, i, _ := l.bundle.matcher.Match(l.tags...)
-	tag := l.bundle.countryTagPair[countryCode][i]
+	languageTags := l.bundle.countryTagPair[countryCode]
+	tag := languageTags[i]
 	mt := l.bundle.getMessageTemplate(tag, id, countryCode)
 	if mt != nil {
 		return tag, mt, nil
